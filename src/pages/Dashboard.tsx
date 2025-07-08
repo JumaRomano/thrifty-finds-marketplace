@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -153,7 +152,7 @@ const Dashboard = () => {
         <div className="flex justify-between items-center mb-8">
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Seller Dashboard</h1>
-            <p className="text-gray-600">Welcome back, {user.name}!</p>
+            <p className="text-gray-600">Welcome back, {user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User'}!</p>
           </div>
           <Button 
             onClick={() => setShowAddForm(true)}

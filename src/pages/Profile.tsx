@@ -12,8 +12,12 @@ import { Camera, Star, Package, Heart } from 'lucide-react';
 const Profile = () => {
   const { user } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
+  
+  const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User';
+  const userAvatar = user?.user_metadata?.avatar_url;
+  
   const [profileData, setProfileData] = useState({
-    name: user?.name || '',
+    name: userName,
     email: user?.email || '',
     bio: 'Vintage fashion enthusiast and sustainable style advocate.',
     location: 'San Francisco, CA'
@@ -45,8 +49,8 @@ const Profile = () => {
             <div className="flex flex-col md:flex-row items-center gap-6">
               <div className="relative">
                 <Avatar className="w-24 h-24">
-                  <AvatarImage src={user.avatar} alt={user.name} />
-                  <AvatarFallback className="text-2xl">{user.name.charAt(0).toUpperCase()}</AvatarFallback>
+                  <AvatarImage src={userAvatar} alt={userName} />
+                  <AvatarFallback className="text-2xl">{userName.charAt(0).toUpperCase()}</AvatarFallback>
                 </Avatar>
                 <Button
                   variant="outline"
@@ -58,7 +62,7 @@ const Profile = () => {
               </div>
               
               <div className="flex-1 text-center md:text-left">
-                <h1 className="text-3xl font-bold text-gray-900 mb-2">{user.name}</h1>
+                <h1 className="text-3xl font-bold text-gray-900 mb-2">{userName}</h1>
                 <p className="text-gray-600 mb-4">{profileData.bio}</p>
                 <div className="flex items-center justify-center md:justify-start gap-4 text-sm text-gray-500">
                   <div className="flex items-center gap-1">

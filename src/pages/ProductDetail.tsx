@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -93,6 +92,7 @@ const ProductDetail = () => {
         price: product.current_price,
         image: product.images?.[0] || '/placeholder.svg',
         condition: product.condition,
+        sellerId: product.seller_id,
       });
     }
   };
@@ -108,13 +108,7 @@ const ProductDetail = () => {
     }
 
     if (product) {
-      addToWishlist({
-        id: product.id,
-        title: product.title,
-        price: product.current_price,
-        image: product.images?.[0] || '/placeholder.svg',
-        condition: product.condition,
-      });
+      addToWishlist(product.id);
     }
   };
 
