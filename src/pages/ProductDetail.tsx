@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -25,6 +26,7 @@ interface Product {
   is_auction: boolean;
   auction_end_time?: string;
   created_at: string;
+  seller_id: string;
   profiles: {
     full_name: string;
     location?: string;

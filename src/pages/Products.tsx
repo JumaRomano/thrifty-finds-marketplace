@@ -10,6 +10,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/utils/currency';
 import { Search, Filter, Clock, TrendingUp } from 'lucide-react';
+import SampleDataLoader from '@/components/SampleDataLoader';
+import { useAuth } from '@/contexts/AuthContext';
 
 interface Product {
   id: string;
@@ -35,6 +37,7 @@ interface Category {
 
 const Products = () => {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -108,6 +111,7 @@ const Products = () => {
       const { data, error } = await query;
 
       if (error) throw error;
+      console.log('Fetched products:', data);
       setProducts(data || []);
     } catch (error) {
       console.error('Error fetching products:', error);
@@ -146,6 +150,11 @@ const Products = () => {
           <p className="text-gray-600">Discover unique thrifted treasures and vintage finds</p>
         </div>
 
+        {/* Sample Data Loader - only show when logged in and no products */}
+        {user && products.length === 0 && !loading && (
+          <SampleDataLoader />
+        )}
+
         {/* Filters */}
         <div className="bg-white rounded-lg shadow-sm border p-6 mb-8">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -164,7 +173,7 @@ const Products = () => {
                 <SelectValue placeholder="All Categories" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Categories</SelectItem>
+                <SelectItem value="all">All Categories</SelectItem>
                 {categories.map((category) => (
                   <SelectItem key={category.id} value={category.id}>
                     {category.name}
@@ -178,7 +187,7 @@ const Products = () => {
                 <SelectValue placeholder="All Conditions" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Conditions</SelectItem>
+                <SelectItem value="all">All Conditions</SelectItem>
                 <SelectItem value="like_new">Like New</SelectItem>
                 <SelectItem value="excellent">Excellent</SelectItem>
                 <SelectItem value="good">Good</SelectItem>
@@ -235,7 +244,9 @@ const Products = () => {
               <Search className="w-8 h-8 text-gray-400" />
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">No products found</h3>
-            <p className="text-gray-600">Try adjusting your search criteria or browse all categories.</p>
+            <p className="text-gray-600">
+              {user ? "Add some products to get started, or try adjusting your search criteria." : "Please sign up or log in to view products."}
+            </p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
