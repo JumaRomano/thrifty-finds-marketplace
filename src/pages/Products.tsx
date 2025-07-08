@@ -1,230 +1,301 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { useCart } from '@/contexts/CartContext';
-import { Search, Filter, Heart, ShoppingCart } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Card, CardContent } from '@/components/ui/card';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import { formatCurrency } from '@/utils/currency';
+import { Search, Filter, Clock, TrendingUp } from 'lucide-react';
 
-const mockProducts = [
-  {
-    id: '1',
-    title: 'Vintage Levi\'s Denim Jacket',
-    price: 45,
-    image: 'https://images.unsplash.com/photo-1551542049-8b7e5d4f6cdf?w=400&h=400&fit=crop',
-    condition: 'Like New',
-    category: 'Outerwear',
-    size: 'M',
-    seller: 'VintageVibes'
-  },
-  {
-    id: '2',
-    title: 'Designer Handbag',
-    price: 120,
-    image: 'https://images.unsplash.com/photo-1584917865442-de89df76afd3?w=400&h=400&fit=crop',
-    condition: 'Good',
-    category: 'Accessories',
-    seller: 'LuxFinds'
-  },
-  {
-    id: '3',
-    title: 'Retro Sneakers',
-    price: 35,
-    image: 'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=400&h=400&fit=crop',
-    condition: 'Fair',
-    category: 'Shoes',
-    size: '9',
-    seller: 'SneakerHead'
-  },
-  {
-    id: '4',
-    title: 'Boho Summer Dress',
-    price: 28,
-    image: 'https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?w=400&h=400&fit=crop',
-    condition: 'Excellent',
-    category: 'Dresses',
-    size: 'S',
-    seller: 'BohoChic'
-  },
-  {
-    id: '5',
-    title: 'Leather Boots',
-    price: 65,
-    image: 'https://images.unsplash.com/photo-1544966503-7cc5ac882d5f?w=400&h=400&fit=crop',
-    condition: 'Good',
-    category: 'Shoes',
-    size: '8',
-    seller: 'BootCollector'
-  },
-  {
-    id: '6',
-    title: 'Silk Scarf',
-    price: 22,
-    image: 'https://images.unsplash.com/photo-1601762603339-fd61e28b698f?w=400&h=400&fit=crop',
-    condition: 'Like New',
-    category: 'Accessories',
-    seller: 'SilkRoad'
-  }
-];
+interface Product {
+  id: string;
+  title: string;
+  current_price: number;
+  condition: string;
+  images?: string[];
+  is_auction: boolean;
+  auction_end_time?: string;
+  profiles: {
+    full_name: string;
+    location?: string;
+  };
+  categories?: {
+    name: string;
+  };
+}
 
-const categories = ['All', 'Outerwear', 'Dresses', 'Shoes', 'Accessories'];
-const conditions = ['All', 'Like New', 'Excellent', 'Good', 'Fair'];
-const sortOptions = ['price-low', 'price-high', 'newest', 'condition'];
+interface Category {
+  id: string;
+  name: string;
+}
 
 const Products = () => {
+  const { toast } = useToast();
+  const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [selectedCondition, setSelectedCondition] = useState('All');
-  const [sortBy, setSortBy] = useState('newest');
-  const { addToCart, addToWishlist, isInWishlist } = useCart();
+  const [selectedCategory, setSelectedCategory] = useState<string>('');
+  const [selectedCondition, setSelectedCondition] = useState<string>('');
+  const [sortBy, setSortBy] = useState<string>('newest');
 
-  const handleAddToCart = (product: any) => {
-    addToCart({
-      id: product.id,
-      title: product.title,
-      price: product.price,
-      image: product.image,
-      size: product.size,
-      sellerId: product.seller
-    });
+  useEffect(() => {
+    fetchCategories();
+    fetchProducts();
+  }, []);
+
+  useEffect(() => {
+    fetchProducts();
+  }, [searchTerm, selectedCategory, selectedCondition, sortBy]);
+
+  const fetchCategories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('categories')
+        .select('*')
+        .order('name');
+
+      if (error) throw error;
+      setCategories(data || []);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
   };
 
-  const handleWishlistToggle = (productId: string) => {
-    if (isInWishlist(productId)) {
-      // Remove from wishlist logic would go here
-    } else {
-      addToWishlist(productId);
+  const fetchProducts = async () => {
+    setLoading(true);
+    try {
+      let query = supabase
+        .from('products')
+        .select(`
+          *,
+          profiles!inner(full_name, location),
+          categories(name)
+        `)
+        .eq('status', 'active');
+
+      if (searchTerm) {
+        query = query.ilike('title', `%${searchTerm}%`);
+      }
+
+      if (selectedCategory) {
+        query = query.eq('category_id', selectedCategory);
+      }
+
+      if (selectedCondition) {
+        query = query.eq('condition', selectedCondition);
+      }
+
+      // Apply sorting
+      switch (sortBy) {
+        case 'price_low':
+          query = query.order('current_price', { ascending: true });
+          break;
+        case 'price_high':
+          query = query.order('current_price', { ascending: false });
+          break;
+        case 'oldest':
+          query = query.order('created_at', { ascending: true });
+          break;
+        default:
+          query = query.order('created_at', { ascending: false });
+      }
+
+      const { data, error } = await query;
+
+      if (error) throw error;
+      setProducts(data || []);
+    } catch (error) {
+      console.error('Error fetching products:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load products. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const getTimeLeft = (auctionEndTime: string) => {
+    const now = new Date().getTime();
+    const endTime = new Date(auctionEndTime).getTime();
+    const difference = endTime - now;
+
+    if (difference <= 0) return 'Ended';
+
+    const hours = Math.floor(difference / (1000 * 60 * 60));
+    const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
+
+    if (hours > 24) {
+      const days = Math.floor(hours / 24);
+      return `${days}d ${hours % 24}h`;
+    }
+    return `${hours}h ${minutes}m`;
   };
 
   return (
     <div className="min-h-screen py-8 px-4">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-4">Discover Unique Finds</h1>
-          
-          {/* Search and Filters */}
-          <div className="flex flex-col lg:flex-row gap-4">
-            {/* Search */}
-            <div className="relative flex-1">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Browse Products</h1>
+          <p className="text-gray-600">Discover unique thrifted treasures and vintage finds</p>
+        </div>
+
+        {/* Filters */}
+        <div className="bg-white rounded-lg shadow-sm border p-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="relative">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
               <Input
-                type="text"
-                placeholder="Search for items..."
+                placeholder="Search products..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="pl-10"
               />
             </div>
-            
-            {/* Filters */}
-            <div className="flex flex-wrap gap-2">
-              <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories.map(category => (
-                    <SelectItem key={category} value={category}>
-                      {category}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
 
-              <Select value={selectedCondition} onValueChange={setSelectedCondition}>
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Condition" />
-                </SelectTrigger>
-                <SelectContent>
-                  {conditions.map(condition => (
-                    <SelectItem key={condition} value={condition}>
-                      {condition}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+              <SelectTrigger>
+                <SelectValue placeholder="All Categories" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All Categories</SelectItem>
+                {categories.map((category) => (
+                  <SelectItem key={category.id} value={category.id}>
+                    {category.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
-              <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Sort by" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="newest">Newest</SelectItem>
-                  <SelectItem value="price-low">Price: Low to High</SelectItem>
-                  <SelectItem value="price-high">Price: High to Low</SelectItem>
-                  <SelectItem value="condition">Best Condition</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <Select value={selectedCondition} onValueChange={setSelectedCondition}>
+              <SelectTrigger>
+                <SelectValue placeholder="All Conditions" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">All Conditions</SelectItem>
+                <SelectItem value="like_new">Like New</SelectItem>
+                <SelectItem value="excellent">Excellent</SelectItem>
+                <SelectItem value="good">Good</SelectItem>
+                <SelectItem value="fair">Fair</SelectItem>
+                <SelectItem value="poor">Poor</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={sortBy} onValueChange={setSortBy}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="newest">Newest First</SelectItem>
+                <SelectItem value="oldest">Oldest First</SelectItem>
+                <SelectItem value="price_low">Price: Low to High</SelectItem>
+                <SelectItem value="price_high">Price: High to Low</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Button
+              onClick={() => {
+                setSearchTerm('');
+                setSelectedCategory('');
+                setSelectedCondition('');
+                setSortBy('newest');
+              }}
+              variant="outline"
+              className="w-full"
+            >
+              <Filter className="w-4 h-4 mr-2" />
+              Clear Filters
+            </Button>
           </div>
         </div>
 
         {/* Products Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {mockProducts.map((product) => (
-            <Card key={product.id} className="overflow-hidden hover:shadow-lg transition-all duration-300 group">
-              <div className="relative overflow-hidden">
-                <img
-                  src={product.image}
-                  alt={product.title}
-                  className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
-                />
-                <div className="absolute top-2 left-2">
-                  <Badge className="bg-emerald-500">{product.condition}</Badge>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={`absolute top-2 right-2 p-2 rounded-full ${
-                    isInWishlist(product.id) ? 'text-red-500' : 'text-gray-400 hover:text-red-500'
-                  }`}
-                  onClick={() => handleWishlistToggle(product.id)}
-                >
-                  <Heart className={`w-4 h-4 ${isInWishlist(product.id) ? 'fill-current' : ''}`} />
-                </Button>
-              </div>
-              
-              <CardContent className="p-4">
-                <Link to={`/product/${product.id}`}>
-                  <h3 className="font-semibold text-gray-800 mb-1 hover:text-emerald-600 transition-colors">
-                    {product.title}
-                  </h3>
-                </Link>
-                <p className="text-sm text-gray-500 mb-1">by {product.seller}</p>
-                <div className="flex items-center gap-2 mb-2">
-                  <Badge variant="outline" className="text-xs">{product.category}</Badge>
-                  {product.size && (
-                    <Badge variant="outline" className="text-xs">Size {product.size}</Badge>
-                  )}
-                </div>
-                
-                <div className="flex justify-between items-center">
-                  <span className="text-xl font-bold text-emerald-600">${product.price}</span>
-                  <Button
-                    size="sm"
-                    onClick={() => handleAddToCart(product)}
-                    className="bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700"
-                  >
-                    <ShoppingCart className="w-4 h-4 mr-1" />
-                    Add
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {/* Load More */}
-        <div className="text-center mt-12">
-          <Button variant="outline" size="lg" className="border-emerald-500 text-emerald-600 hover:bg-emerald-50">
-            Load More Items
-          </Button>
-        </div>
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {[...Array(8)].map((_, i) => (
+              <Card key={i} className="animate-pulse">
+                <div className="aspect-square bg-gray-200 rounded-t-lg"></div>
+                <CardContent className="p-4">
+                  <div className="h-4 bg-gray-200 rounded mb-2"></div>
+                  <div className="h-6 bg-gray-200 rounded mb-2"></div>
+                  <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : products.length === 0 ? (
+          <div className="text-center py-12">
+            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Search className="w-8 h-8 text-gray-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">No products found</h3>
+            <p className="text-gray-600">Try adjusting your search criteria or browse all categories.</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {products.map((product) => (
+              <Link key={product.id} to={`/product/${product.id}`}>
+                <Card className="group hover:shadow-lg transition-shadow duration-300 overflow-hidden">
+                  <div className="aspect-square bg-gray-100 overflow-hidden relative">
+                    <img
+                      src={product.images?.[0] || '/placeholder.svg'}
+                      alt={product.title}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                    />
+                    <div className="absolute top-3 left-3 flex gap-2">
+                      <Badge variant="secondary" className="bg-white/90">
+                        {product.condition}
+                      </Badge>
+                      {product.is_auction && (
+                        <Badge className="bg-gradient-to-r from-emerald-500 to-teal-600">
+                          <TrendingUp className="w-3 h-3 mr-1" />
+                          Auction
+                        </Badge>
+                      )}
+                    </div>
+                    {product.categories && (
+                      <div className="absolute top-3 right-3">
+                        <Badge variant="outline" className="bg-white/90">
+                          {product.categories.name}
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
+                  <CardContent className="p-4">
+                    <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2 group-hover:text-emerald-600 transition-colors">
+                      {product.title}
+                    </h3>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xl font-bold text-emerald-600">
+                        {formatCurrency(product.current_price)}
+                      </span>
+                      {product.is_auction && product.auction_end_time && (
+                        <div className="flex items-center gap-1 text-xs text-gray-600">
+                          <Clock className="w-3 h-3" />
+                          {getTimeLeft(product.auction_end_time)}
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-sm text-gray-600 truncate">
+                      by {product.profiles.full_name}
+                    </p>
+                    {product.profiles.location && (
+                      <p className="text-xs text-gray-500 mt-1">
+                        {product.profiles.location}
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              </Link>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

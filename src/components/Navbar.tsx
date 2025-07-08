@@ -19,9 +19,13 @@ const Navbar = () => {
   const { getTotalItems, wishlist } = useCart();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/');
+  };
+
+  const getUserInitials = (email: string) => {
+    return email.split('@')[0].substring(0, 2).toUpperCase();
   };
 
   return (
@@ -83,8 +87,8 @@ const Navbar = () => {
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                       <Avatar className="h-8 w-8">
-                        <AvatarImage src={user.avatar} alt={user.name} />
-                        <AvatarFallback>{user.name.charAt(0).toUpperCase()}</AvatarFallback>
+                        <AvatarImage src="" alt={user.email || ''} />
+                        <AvatarFallback>{getUserInitials(user.email || '')}</AvatarFallback>
                       </Avatar>
                     </Button>
                   </DropdownMenuTrigger>
@@ -97,12 +101,10 @@ const Navbar = () => {
                       <Store className="mr-2 h-4 w-4" />
                       Seller Dashboard
                     </DropdownMenuItem>
-                    {user.role === 'admin' && (
-                      <DropdownMenuItem onClick={() => navigate('/admin')}>
-                        <Settings className="mr-2 h-4 w-4" />
-                        Admin Panel
-                      </DropdownMenuItem>
-                    )}
+                    <DropdownMenuItem onClick={() => navigate('/admin')}>
+                      <Settings className="mr-2 h-4 w-4" />
+                      Admin Panel
+                    </DropdownMenuItem>
                     <DropdownMenuItem onClick={handleLogout}>
                       <LogOut className="mr-2 h-4 w-4" />
                       Log out

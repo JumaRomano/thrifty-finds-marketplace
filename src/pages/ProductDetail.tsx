@@ -1,234 +1,300 @@
 
-import React, { useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { useCart } from '@/contexts/CartContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { Heart, ShoppingCart, Star, MessageCircle, ArrowLeft, Shield } from 'lucide-react';
+import { useCart } from '@/contexts/CartContext';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import { formatCurrency } from '@/utils/currency';
+import BiddingSection from '@/components/BiddingSection';
+import { ArrowLeft, Heart, ShoppingCart, Star, MapPin, Calendar, Package } from 'lucide-react';
+
+interface Product {
+  id: string;
+  title: string;
+  description: string;
+  current_price: number;
+  starting_price: number;
+  buy_now_price?: number;
+  condition: string;
+  size?: string;
+  brand?: string;
+  images?: string[];
+  is_auction: boolean;
+  auction_end_time?: string;
+  created_at: string;
+  profiles: {
+    full_name: string;
+    location?: string;
+  };
+  categories?: {
+    name: string;
+  };
+}
 
 const ProductDetail = () => {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const { addToCart, addToWishlist, isInWishlist } = useCart();
+  const { id } = useParams<{ id: string }>();
   const { user } = useAuth();
-  const [selectedImage, setSelectedImage] = useState(0);
+  const { addToCart, addToWishlist, isInWishlist } = useCart();
+  const { toast } = useToast();
+  const [product, setProduct] = useState<Product | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
-  // Mock product data - in real app, fetch by ID
-  const product = {
-    id: id || '1',
-    title: 'Vintage Levi\'s Denim Jacket',
-    price: 45,
-    images: [
-      'https://images.unsplash.com/photo-1551542049-8b7e5d4f6cdf?w=600&h=600&fit=crop',
-      'https://images.unsplash.com/photo-1544966503-7cc5ac882d5f?w=600&h=600&fit=crop',
-      'https://images.unsplash.com/photo-1549298916-b41d501d3772?w=600&h=600&fit=crop'
-    ],
-    condition: 'Like New',
-    category: 'Outerwear',
-    size: 'M',
-    brand: 'Levi\'s',
-    description: 'Classic vintage Levi\'s denim jacket in excellent condition. This timeless piece features the iconic trucker jacket design with button closure, chest pockets, and adjustable side tabs. Perfect for layering and adds instant vintage cool to any outfit.',
-    measurements: {
-      chest: '42"',
-      length: '24"',
-      sleeve: '25"'
-    },
-    seller: {
-      id: '1',
-      name: 'VintageVibes',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=vintage',
-      rating: 4.8,
-      sales: 234
-    },
-    tags: ['vintage', 'denim', 'classic', 'unisex']
+  useEffect(() => {
+    if (id) {
+      fetchProduct();
+    }
+  }, [id]);
+
+  const fetchProduct = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('products')
+        .select(`
+          *,
+          profiles!inner(full_name, location),
+          categories(name)
+        `)
+        .eq('id', id)
+        .single();
+
+      if (error) throw error;
+      setProduct(data);
+    } catch (error) {
+      console.error('Error fetching product:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load product details.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAddToCart = () => {
     if (!user) {
-      navigate('/login');
+      toast({
+        title: "Authentication required",
+        description: "Please log in to add items to cart.",
+        variant: "destructive",
+      });
       return;
     }
-    
-    addToCart({
-      id: product.id,
-      title: product.title,
-      price: product.price,
-      image: product.images[0],
-      size: product.size,
-      sellerId: product.seller.id
-    });
+
+    if (product) {
+      addToCart({
+        id: product.id,
+        title: product.title,
+        price: product.current_price,
+        image: product.images?.[0] || '/placeholder.svg',
+        condition: product.condition,
+      });
+    }
   };
 
-  const handleWishlistToggle = () => {
+  const handleAddToWishlist = () => {
     if (!user) {
-      navigate('/login');
+      toast({
+        title: "Authentication required",
+        description: "Please log in to add items to wishlist.",
+        variant: "destructive",
+      });
       return;
     }
-    
-    addToWishlist(product.id);
+
+    if (product) {
+      addToWishlist({
+        id: product.id,
+        title: product.title,
+        price: product.current_price,
+        image: product.images?.[0] || '/placeholder.svg',
+        condition: product.condition,
+      });
+    }
   };
+
+  const handlePriceUpdate = (newPrice: number) => {
+    if (product) {
+      setProduct({ ...product, current_price: newPrice });
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
+          <p>Loading product details...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!product) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold mb-4">Product not found</h2>
+          <Link to="/products">
+            <Button>Back to Products</Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen py-8 px-4">
-      <div className="max-w-6xl mx-auto">
-        {/* Back Button */}
-        <Button
-          variant="ghost"
-          onClick={() => navigate(-1)}
-          className="mb-6"
-        >
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back
-        </Button>
+      <div className="max-w-7xl mx-auto">
+        <Link to="/products" className="inline-flex items-center gap-2 text-emerald-600 hover:text-emerald-700 mb-6">
+          <ArrowLeft className="w-4 h-4" />
+          Back to Products
+        </Link>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Images */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+          {/* Product Images */}
           <div className="space-y-4">
-            <div className="aspect-square overflow-hidden rounded-lg bg-gray-100">
+            <div className="aspect-square bg-gray-100 rounded-lg overflow-hidden">
               <img
-                src={product.images[selectedImage]}
+                src={product.images?.[currentImageIndex] || '/placeholder.svg'}
                 alt={product.title}
                 className="w-full h-full object-cover"
               />
             </div>
-            <div className="flex gap-2 overflow-x-auto">
-              {product.images.map((image, index) => (
-                <button
-                  key={index}
-                  onClick={() => setSelectedImage(index)}
-                  className={`flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 ${
-                    selectedImage === index ? 'border-emerald-500' : 'border-gray-200'
-                  }`}
-                >
-                  <img
-                    src={image}
-                    alt={`${product.title} ${index + 1}`}
-                    className="w-full h-full object-cover"
-                  />
-                </button>
-              ))}
-            </div>
+            {product.images && product.images.length > 1 && (
+              <div className="flex gap-2 overflow-x-auto">
+                {product.images.map((image, index) => (
+                  <button
+                    key={index}
+                    onClick={() => setCurrentImageIndex(index)}
+                    className={`flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 ${
+                      currentImageIndex === index ? 'border-emerald-500' : 'border-gray-200'
+                    }`}
+                  >
+                    <img src={image} alt={`${product.title} ${index + 1}`} className="w-full h-full object-cover" />
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Product Info */}
           <div className="space-y-6">
             <div>
               <div className="flex items-center gap-2 mb-2">
-                <Badge className="bg-emerald-500">{product.condition}</Badge>
-                <Badge variant="outline">{product.category}</Badge>
+                {product.categories && (
+                  <Badge variant="secondary">{product.categories.name}</Badge>
+                )}
+                <Badge variant="outline">{product.condition}</Badge>
+                {product.is_auction && (
+                  <Badge className="bg-gradient-to-r from-emerald-500 to-teal-600">
+                    Auction
+                  </Badge>
+                )}
               </div>
               <h1 className="text-3xl font-bold text-gray-900 mb-2">{product.title}</h1>
-              <p className="text-sm text-gray-600 mb-4">{product.brand}</p>
-              <p className="text-4xl font-bold text-emerald-600">${product.price}</p>
-            </div>
-
-            {/* Size and Details */}
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-semibold mb-2">Size: {product.size}</h3>
-              </div>
               
+              <div className="flex items-center gap-4 text-sm text-gray-600 mb-4">
+                <div className="flex items-center gap-1">
+                  <MapPin className="w-4 h-4" />
+                  <span>{product.profiles.location || 'Location not specified'}</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <Calendar className="w-4 h-4" />
+                  <span>Listed {new Date(product.created_at).toLocaleDateString()}</span>
+                </div>
+              </div>
+
+              <div className="text-3xl font-bold text-emerald-600 mb-4">
+                {formatCurrency(product.current_price)}
+              </div>
+
+              {product.is_auction && product.starting_price !== product.current_price && (
+                <p className="text-sm text-gray-600 mb-4">
+                  Starting price: {formatCurrency(product.starting_price)}
+                </p>
+              )}
+
+              {product.buy_now_price && (
+                <p className="text-sm text-gray-600 mb-4">
+                  Buy now price: {formatCurrency(product.buy_now_price)}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                {product.brand && (
+                  <div>
+                    <span className="text-sm font-medium text-gray-700">Brand:</span>
+                    <p className="text-gray-900">{product.brand}</p>
+                  </div>
+                )}
+                {product.size && (
+                  <div>
+                    <span className="text-sm font-medium text-gray-700">Size:</span>
+                    <p className="text-gray-900">{product.size}</p>
+                  </div>
+                )}
+              </div>
+
               <div>
-                <h3 className="font-semibold mb-2">Measurements</h3>
-                <div className="grid grid-cols-3 gap-4 text-sm">
-                  <div>
-                    <span className="text-gray-600">Chest:</span>
-                    <p className="font-medium">{product.measurements.chest}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Length:</span>
-                    <p className="font-medium">{product.measurements.length}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Sleeve:</span>
-                    <p className="font-medium">{product.measurements.sleeve}</p>
-                  </div>
-                </div>
+                <span className="text-sm font-medium text-gray-700">Seller:</span>
+                <p className="text-gray-900">{product.profiles.full_name}</p>
               </div>
             </div>
 
-            {/* Actions */}
-            <div className="flex gap-3">
-              <Button
-                onClick={handleAddToCart}
-                className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700"
-              >
-                <ShoppingCart className="w-4 h-4 mr-2" />
-                Add to Cart
-              </Button>
-              <Button
-                variant="outline"
-                onClick={handleWishlistToggle}
-                className={`p-3 ${
-                  isInWishlist(product.id) ? 'text-red-500 border-red-500' : 'hover:text-red-500'
-                }`}
-              >
-                <Heart className={`w-5 h-5 ${isInWishlist(product.id) ? 'fill-current' : ''}`} />
-              </Button>
-            </div>
+            {!product.is_auction && (
+              <div className="flex gap-3">
+                <Button
+                  onClick={handleAddToCart}
+                  className="flex-1 bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700"
+                >
+                  <ShoppingCart className="w-4 h-4 mr-2" />
+                  Add to Cart
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={handleAddToWishlist}
+                  className={isInWishlist(product.id) ? "text-red-500 border-red-500" : ""}
+                >
+                  <Heart className={`w-4 h-4 ${isInWishlist(product.id) ? "fill-current" : ""}`} />
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
 
-            {/* Seller Info */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Product Description */}
+          <div className="lg:col-span-2">
             <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Avatar>
-                      <AvatarImage src={product.seller.avatar} />
-                      <AvatarFallback>{product.seller.name[0]}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <h4 className="font-semibold">{product.seller.name}</h4>
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                        <span>{product.seller.rating}</span>
-                        <span>•</span>
-                        <span>{product.seller.sales} sales</span>
-                      </div>
-                    </div>
-                  </div>
-                  <Button variant="outline" size="sm">
-                    <MessageCircle className="w-4 h-4 mr-2" />
-                    Message
-                  </Button>
-                </div>
+              <CardContent className="p-6">
+                <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
+                  <Package className="w-5 h-5" />
+                  Description
+                </h3>
+                <p className="text-gray-700 whitespace-pre-wrap">
+                  {product.description || 'No description provided.'}
+                </p>
               </CardContent>
             </Card>
+          </div>
 
-            {/* Description */}
-            <div>
-              <h3 className="font-semibold mb-2">Description</h3>
-              <p className="text-gray-700 leading-relaxed">{product.description}</p>
-            </div>
-
-            {/* Tags */}
-            <div>
-              <h3 className="font-semibold mb-2">Tags</h3>
-              <div className="flex flex-wrap gap-2">
-                {product.tags.map((tag) => (
-                  <Badge key={tag} variant="secondary" className="text-xs">
-                    #{tag}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-
-            {/* Trust & Safety */}
-            <Card className="bg-emerald-50 border-emerald-200">
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3">
-                  <Shield className="w-5 h-5 text-emerald-600" />
-                  <div>
-                    <h4 className="font-semibold text-emerald-800">Protected Purchase</h4>
-                    <p className="text-sm text-emerald-700">
-                      Your order is protected by our buyer guarantee
-                    </p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          {/* Bidding Section */}
+          <div>
+            <BiddingSection
+              productId={product.id}
+              currentPrice={product.current_price}
+              isAuction={product.is_auction}
+              auctionEndTime={product.auction_end_time}
+              onPriceUpdate={handlePriceUpdate}
+            />
           </div>
         </div>
       </div>
