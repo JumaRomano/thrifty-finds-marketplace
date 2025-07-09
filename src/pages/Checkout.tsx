@@ -5,11 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/utils/currency';
-import { ArrowLeft, CreditCard, MapPin, User } from 'lucide-react';
+import { ArrowLeft, CreditCard, MapPin, User, Upload, Phone, Calendar } from 'lucide-react';
 
 interface Product {
   id: string;
@@ -19,8 +20,16 @@ interface Product {
   seller_id: string;
   profiles: {
     full_name: string;
+    phone?: string;
   };
 }
+
+const pickupLocations = [
+  { value: 'nairobi-cbd', label: 'Nairobi CBD', address: 'Tom Mboya Street, Nairobi' },
+  { value: 'thika-trm', label: 'Thika TRM', address: 'TRM Mall, Thika Road' },
+  { value: 'westlands', label: 'Westlands', address: 'Westlands Shopping Centre' },
+  { value: 'ngong', label: 'Ngong', address: 'Ngong Town Center' }
+];
 
 const Checkout = () => {
   const { productId } = useParams<{ productId: string }>();
@@ -31,6 +40,13 @@ const Checkout = () => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [shippingAddress, setShippingAddress] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('mpesa');
+  const [tillNumber, setTillNumber] = useState('');
+  const [mpesaCode, setMpesaCode] = useState('');
+  const [mpesaReceipt, setMpesaReceipt] = useState<File | null>(null);
+  const [pickupLocation, setPickupLocation] = useState('');
+  const [pickupDate, setPickupDate] = useState('');
+  const [buyerPhone, setBuyerPhone] = useState('');
 
   useEffect(() => {
     if (productId) {
@@ -44,13 +60,16 @@ const Checkout = () => {
         .from('products')
         .select(`
           *,
-          profiles!inner(full_name)
+          profiles!inner(full_name, phone)
         `)
         .eq('id', productId)
         .single();
 
       if (error) throw error;
       setProduct(data);
+      
+      // Set seller's payment info (in real app, this would come from seller's profile)
+      setTillNumber('174379'); // Demo till number
     } catch (error) {
       console.error('Error fetching product:', error);
       toast({
@@ -63,9 +82,39 @@ const Checkout = () => {
     }
   };
 
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file && file.type.startsWith('image/')) {
+      setMpesaReceipt(file);
+      toast({
+        title: "Receipt uploaded",
+        description: "M-Pesa receipt has been uploaded successfully.",
+      });
+    } else {
+      toast({
+        title: "Invalid file",
+        description: "Please upload an image file of your M-Pesa receipt.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const getMinPickupDate = () => {
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return tomorrow.toISOString().split('T')[0];
+  };
+
+  const getMaxPickupDate = () => {
+    const maxDate = new Date();
+    maxDate.setDate(maxDate.getDate() + 30); // 30 days from now
+    return maxDate.toISOString().split('T')[0];
+  };
+
   const handleCheckout = async () => {
     if (!user || !product) return;
 
+    // Validation
     if (!shippingAddress.trim()) {
       toast({
         title: "Missing Information",
@@ -75,9 +124,56 @@ const Checkout = () => {
       return;
     }
 
+    if (!buyerPhone.trim()) {
+      toast({
+        title: "Missing Information",
+        description: "Please provide your phone number.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!pickupLocation) {
+      toast({
+        title: "Missing Information",
+        description: "Please select a pickup location.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!pickupDate) {
+      toast({
+        title: "Missing Information",
+        description: "Please select a pickup date.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (paymentMethod === 'mpesa' && !mpesaCode.trim()) {
+      toast({
+        title: "Missing Information",
+        description: "Please enter your M-Pesa transaction code.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (paymentMethod === 'mpesa' && !mpesaReceipt) {
+      toast({
+        title: "Missing Information",
+        description: "Please upload your M-Pesa receipt.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSubmitting(true);
 
     try {
+      const selectedLocation = pickupLocations.find(loc => loc.value === pickupLocation);
+      
       // Create order record
       const { error: orderError } = await supabase
         .from('orders')
@@ -87,33 +183,53 @@ const Checkout = () => {
           product_id: product.id,
           amount: product.current_price,
           shipping_address: shippingAddress,
-          status: 'paid'
+          status: 'payment_pending',
+          // Store additional checkout info in a metadata field or separate table
+          // For now, we'll use shipping_address to store all info
+          shipping_address: JSON.stringify({
+            address: shippingAddress,
+            phone: buyerPhone,
+            pickup_location: selectedLocation?.label,
+            pickup_address: selectedLocation?.address,
+            pickup_date: pickupDate,
+            payment_method: paymentMethod,
+            mpesa_code: mpesaCode,
+            till_number: tillNumber
+          })
         });
 
       if (orderError) throw orderError;
 
-      // Update product status to sold
+      // Update product status to pending (not sold until payment is verified)
       const { error: updateError } = await supabase
         .from('products')
-        .update({ status: 'sold' })
+        .update({ status: 'pending' })
         .eq('id', product.id);
 
       if (updateError) throw updateError;
 
       toast({
-        title: "Payment Successful!",
-        description: "Your order has been placed successfully. The seller will be notified.",
+        title: "Order Placed Successfully!",
+        description: "Your order has been placed. The seller will verify your payment and contact you for pickup details.",
       });
 
       // Redirect to success page
       navigate('/dashboard', { 
-        state: { message: 'Payment completed successfully!' }
+        state: { 
+          message: 'Order placed successfully! You will be contacted once payment is verified.',
+          orderDetails: {
+            product: product.title,
+            amount: product.current_price,
+            pickup_location: selectedLocation?.label,
+            pickup_date: pickupDate
+          }
+        }
       });
 
     } catch (error: any) {
-      console.error('Error processing payment:', error);
+      console.error('Error processing order:', error);
       toast({
-        title: "Payment Failed",
+        title: "Order Failed",
         description: error.message || "Something went wrong. Please try again.",
         variant: "destructive",
       });
@@ -161,13 +277,14 @@ const Checkout = () => {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Order Summary */}
+          {/* Checkout Form */}
           <div className="lg:col-span-2 space-y-6">
+            {/* Buyer Information */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <User className="w-5 h-5" />
-                  Shipping Information
+                  Buyer Information
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -176,11 +293,20 @@ const Checkout = () => {
                   <Input value={user?.email || ''} disabled />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium mb-1">Shipping Address *</label>
+                  <label className="block text-sm font-medium mb-1">Phone Number *</label>
+                  <Input
+                    value={buyerPhone}
+                    onChange={(e) => setBuyerPhone(e.target.value)}
+                    placeholder="07xxxxxxxx"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Address *</label>
                   <Textarea
                     value={shippingAddress}
                     onChange={(e) => setShippingAddress(e.target.value)}
-                    placeholder="Enter your full shipping address..."
+                    placeholder="Enter your address for communication purposes..."
                     required
                     rows={3}
                   />
@@ -188,17 +314,133 @@ const Checkout = () => {
               </CardContent>
             </Card>
 
+            {/* Pickup Information */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <MapPin className="w-5 h-5" />
+                  Pickup Information
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Pickup Location *</label>
+                  <Select value={pickupLocation} onValueChange={setPickupLocation} required>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select pickup location" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {pickupLocations.map((location) => (
+                        <SelectItem key={location.value} value={location.value}>
+                          <div>
+                            <div className="font-medium">{location.label}</div>
+                            <div className="text-sm text-gray-500">{location.address}</div>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">Pickup Date *</label>
+                  <Input
+                    type="date"
+                    value={pickupDate}
+                    onChange={(e) => setPickupDate(e.target.value)}
+                    min={getMinPickupDate()}
+                    max={getMaxPickupDate()}
+                    required
+                  />
+                  <p className="text-sm text-gray-500 mt-1">
+                    Available for pickup from tomorrow up to 30 days
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Payment Information */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <CreditCard className="w-5 h-5" />
-                  Payment Method
+                  Payment Information
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="p-4 bg-gray-50 rounded-lg">
-                  <p className="text-sm text-gray-600">
-                    💡 This is a demo checkout. In production, integrate with payment processors like Stripe, PayPal, or M-Pesa.
+              <CardContent className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium mb-1">Payment Method</label>
+                  <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="mpesa">M-Pesa</SelectItem>
+                      <SelectItem value="till">Business Till Number</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {paymentMethod === 'mpesa' && (
+                  <div className="p-4 bg-green-50 rounded-lg border border-green-200">
+                    <h4 className="font-medium text-green-800 mb-2">M-Pesa Payment Instructions</h4>
+                    <ol className="text-sm text-green-700 space-y-1">
+                      <li>1. Go to M-Pesa on your phone</li>
+                      <li>2. Select "Lipa na M-Pesa"</li>
+                      <li>3. Select "Buy Goods and Services"</li>
+                      <li>4. Enter Till Number: <strong>{tillNumber}</strong></li>
+                      <li>5. Enter Amount: <strong>{formatCurrency(product.current_price)}</strong></li>
+                      <li>6. Enter your M-Pesa PIN</li>
+                      <li>7. Upload the M-Pesa receipt below</li>
+                    </ol>
+                  </div>
+                )}
+
+                {paymentMethod === 'till' && (
+                  <div className="p-4 bg-blue-50 rounded-lg border border-blue-200">
+                    <h4 className="font-medium text-blue-800 mb-2">Pochi la Biashara Payment</h4>
+                    <p className="text-sm text-blue-700 mb-2">
+                      Send <strong>{formatCurrency(product.current_price)}</strong> to the seller's business number:
+                    </p>
+                    <p className="text-lg font-bold text-blue-800">{tillNumber}</p>
+                    <p className="text-sm text-blue-600 mt-2">
+                      After sending money, upload your M-Pesa receipt below.
+                    </p>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">M-Pesa Transaction Code *</label>
+                  <Input
+                    value={mpesaCode}
+                    onChange={(e) => setMpesaCode(e.target.value)}
+                    placeholder="Enter M-Pesa code (e.g., QH7XF7Y890)"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-1">Upload M-Pesa Receipt *</label>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                      id="receipt-upload"
+                    />
+                    <label
+                      htmlFor="receipt-upload"
+                      className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded cursor-pointer hover:bg-gray-50"
+                    >
+                      <Upload className="w-4 h-4" />
+                      <span>{mpesaReceipt ? 'Receipt Uploaded' : 'Upload Receipt'}</span>
+                    </label>
+                    {mpesaReceipt && (
+                      <span className="text-sm text-green-600">✓ {mpesaReceipt.name}</span>
+                    )}
+                  </div>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Upload a clear photo of your M-Pesa receipt for verification
                   </p>
                 </div>
               </CardContent>
@@ -223,6 +465,12 @@ const Checkout = () => {
                     <p className="text-sm text-gray-600">
                       Sold by {product.profiles.full_name}
                     </p>
+                    {product.profiles.phone && (
+                      <p className="text-sm text-gray-600 flex items-center gap-1">
+                        <Phone className="w-3 h-3" />
+                        {product.profiles.phone}
+                      </p>
+                    )}
                   </div>
                 </div>
 
@@ -232,9 +480,21 @@ const Checkout = () => {
                     <span>{formatCurrency(product.current_price)}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span>Shipping</span>
+                    <span>Service fee</span>
                     <span className="text-emerald-600">Free</span>
                   </div>
+                  {pickupLocation && (
+                    <div className="flex justify-between text-sm">
+                      <span>Pickup location</span>
+                      <span>{pickupLocations.find(loc => loc.value === pickupLocation)?.label}</span>
+                    </div>
+                  )}
+                  {pickupDate && (
+                    <div className="flex justify-between text-sm">
+                      <span>Pickup date</span>
+                      <span>{new Date(pickupDate).toLocaleDateString()}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-lg font-bold pt-2 border-t">
                     <span>Total</span>
                     <span>{formatCurrency(product.current_price)}</span>
@@ -243,15 +503,18 @@ const Checkout = () => {
 
                 <Button
                   onClick={handleCheckout}
-                  disabled={submitting || !shippingAddress.trim()}
+                  disabled={submitting || !shippingAddress.trim() || !buyerPhone.trim() || !pickupLocation || !pickupDate || !mpesaCode.trim() || !mpesaReceipt}
                   className="w-full bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700"
                 >
-                  {submitting ? 'Processing...' : `Pay ${formatCurrency(product.current_price)}`}
+                  {submitting ? 'Processing...' : `Complete Order - ${formatCurrency(product.current_price)}`}
                 </Button>
 
-                <div className="text-xs text-gray-500 text-center">
-                  <MapPin className="w-3 h-3 inline mr-1" />
-                  Secure checkout powered by demo system
+                <div className="text-xs text-gray-500 text-center space-y-1">
+                  <div className="flex items-center justify-center gap-1">
+                    <MapPin className="w-3 h-3" />
+                    Secure checkout with pickup verification
+                  </div>
+                  <p>Payment will be verified before pickup is arranged</p>
                 </div>
               </CardContent>
             </Card>

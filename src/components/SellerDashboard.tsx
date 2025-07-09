@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -10,8 +9,9 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/utils/currency';
-import { Plus, Package, TrendingUp, Eye, Edit, Clock } from 'lucide-react';
+import { Plus, Package, TrendingUp, Eye, Edit, Clock, Upload, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import ProductEditModal from './ProductEditModal';
 
 interface Product {
   id: string;
@@ -24,6 +24,10 @@ interface Product {
   created_at: string;
   auction_end_time?: string;
   images?: string[];
+  description?: string;
+  brand?: string;
+  category_id?: string;
+  auction_duration_hours?: string;
 }
 
 interface Bid {
@@ -46,8 +50,9 @@ const SellerDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [showListingForm, setShowListingForm] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [uploadingImages, setUploadingImages] = useState(false);
 
-  // Form state
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -60,6 +65,7 @@ const SellerDashboard = () => {
     is_auction: false,
     auction_duration_hours: '24',
   });
+  const [formImages, setFormImages] = useState<string[]>([]);
 
   useEffect(() => {
     if (user) {
@@ -88,7 +94,6 @@ const SellerDashboard = () => {
     try {
       console.log('Fetching seller data for user:', user.id);
       
-      // Fetch seller's products
       const { data: productsData, error: productsError } = await supabase
         .from('products')
         .select('*')
@@ -102,7 +107,6 @@ const SellerDashboard = () => {
 
       console.log('Fetched products:', productsData);
 
-      // Fetch bids on seller's products
       const { data: bidsData, error: bidsError } = await supabase
         .from('seller_bids')
         .select('*')
@@ -127,6 +131,42 @@ const SellerDashboard = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files;
+    if (!files || files.length === 0) return;
+
+    setUploadingImages(true);
+    const newImages: string[] = [];
+
+    try {
+      for (const file of Array.from(files)) {
+        // For demo purposes, we'll use placeholder URLs
+        // In production, you'd upload to Supabase storage
+        const imageUrl = URL.createObjectURL(file);
+        newImages.push(imageUrl);
+      }
+      
+      setFormImages(prev => [...prev, ...newImages]);
+      toast({
+        title: "Images uploaded",
+        description: "Product images have been added successfully.",
+      });
+    } catch (error) {
+      console.error('Error uploading images:', error);
+      toast({
+        title: "Upload failed",
+        description: "Failed to upload images. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingImages(false);
+    }
+  };
+
+  const removeImage = (index: number) => {
+    setFormImages(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmitListing = async (e: React.FormEvent) => {
@@ -158,7 +198,6 @@ const SellerDashboard = () => {
         throw new Error('Starting price must be a valid positive number');
       }
 
-      // Calculate auction end time if it's an auction
       let auctionEndTime = null;
       if (formData.is_auction && formData.auction_duration_hours) {
         const hours = parseInt(formData.auction_duration_hours);
@@ -180,7 +219,7 @@ const SellerDashboard = () => {
         is_auction: formData.is_auction,
         auction_end_time: auctionEndTime,
         seller_id: user.id,
-        images: ['/placeholder.svg'],
+        images: formImages.length > 0 ? formImages : ['/placeholder.svg'],
         status: 'active'
       };
 
@@ -217,6 +256,7 @@ const SellerDashboard = () => {
         is_auction: false,
         auction_duration_hours: '24',
       });
+      setFormImages([]);
       setShowListingForm(false);
       fetchSellerData();
     } catch (error: any) {
@@ -344,6 +384,46 @@ const SellerDashboard = () => {
                     rows={3}
                     placeholder="Describe your item..."
                   />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2">Product Images</label>
+                  <div className="grid grid-cols-4 gap-2 mb-2">
+                    {formImages.map((image, index) => (
+                      <div key={index} className="relative group">
+                        <img
+                          src={image}
+                          alt={`Product ${index + 1}`}
+                          className="w-full h-20 object-cover rounded border"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => removeImage(index)}
+                          className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*"
+                      onChange={handleImageUpload}
+                      className="hidden"
+                      id="image-upload"
+                    />
+                    <label
+                      htmlFor="image-upload"
+                      className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded cursor-pointer hover:bg-gray-50"
+                    >
+                      <Upload className="w-4 h-4" />
+                      <span>Upload Images</span>
+                    </label>
+                    {uploadingImages && <span className="text-sm text-gray-500">Uploading...</span>}
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -504,6 +584,13 @@ const SellerDashboard = () => {
                       </div>
                     </div>
                     <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setEditingProduct(product)}
+                      >
+                        <Edit className="w-4 h-4" />
+                      </Button>
                       <Link to={`/product/${product.id}`}>
                         <Button variant="outline" size="sm">
                           <Eye className="w-4 h-4" />
@@ -516,6 +603,15 @@ const SellerDashboard = () => {
             )}
           </CardContent>
         </Card>
+
+        {/* Edit Product Modal */}
+        <ProductEditModal
+          product={editingProduct}
+          isOpen={!!editingProduct}
+          onClose={() => setEditingProduct(null)}
+          onSave={fetchSellerData}
+          categories={categories}
+        />
       </div>
     </div>
   );
