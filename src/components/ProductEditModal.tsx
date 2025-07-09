@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,20 +7,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { X, Upload, Trash2 } from 'lucide-react';
+import { Tables } from '@/integrations/supabase/types';
 
-interface Product {
-  id: string;
-  title: string;
-  description: string;
-  starting_price: number;
-  current_price: number;
-  condition: string;
-  brand: string;
-  category_id: string;
-  images: string[];
-  is_auction: boolean;
-  auction_duration_hours: string;
-}
+type Product = Tables<'products'>;
 
 interface ProductEditModalProps {
   product: Product | null;
@@ -62,8 +50,8 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
         condition: product.condition || '',
         brand: product.brand || '',
         category_id: product.category_id || '',
-        is_auction: product.is_auction,
-        auction_duration_hours: product.auction_duration_hours || '24',
+        is_auction: product.is_auction || false,
+        auction_duration_hours: '24', // Default since this field doesn't exist in the DB
       });
       setImages(product.images || []);
     }
@@ -121,7 +109,9 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
           category_id: formData.category_id || null,
           images: images,
           is_auction: formData.is_auction,
-          auction_duration_hours: formData.is_auction ? parseInt(formData.auction_duration_hours) : null,
+          auction_end_time: formData.is_auction ? 
+            new Date(Date.now() + parseInt(formData.auction_duration_hours) * 60 * 60 * 1000).toISOString() : 
+            null,
           updated_at: new Date().toISOString()
         })
         .eq('id', product.id);

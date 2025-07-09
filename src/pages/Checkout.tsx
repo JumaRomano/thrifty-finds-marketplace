@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
@@ -174,7 +173,18 @@ const Checkout = () => {
     try {
       const selectedLocation = pickupLocations.find(loc => loc.value === pickupLocation);
       
-      // Create order record
+      // Create order record with all checkout info in a single field
+      const checkoutInfo = {
+        address: shippingAddress,
+        phone: buyerPhone,
+        pickup_location: selectedLocation?.label,
+        pickup_address: selectedLocation?.address,
+        pickup_date: pickupDate,
+        payment_method: paymentMethod,
+        mpesa_code: mpesaCode,
+        till_number: tillNumber
+      };
+
       const { error: orderError } = await supabase
         .from('orders')
         .insert({
@@ -182,20 +192,8 @@ const Checkout = () => {
           seller_id: product.seller_id,
           product_id: product.id,
           amount: product.current_price,
-          shipping_address: shippingAddress,
-          status: 'payment_pending',
-          // Store additional checkout info in a metadata field or separate table
-          // For now, we'll use shipping_address to store all info
-          shipping_address: JSON.stringify({
-            address: shippingAddress,
-            phone: buyerPhone,
-            pickup_location: selectedLocation?.label,
-            pickup_address: selectedLocation?.address,
-            pickup_date: pickupDate,
-            payment_method: paymentMethod,
-            mpesa_code: mpesaCode,
-            till_number: tillNumber
-          })
+          shipping_address: JSON.stringify(checkoutInfo),
+          status: 'payment_pending'
         });
 
       if (orderError) throw orderError;

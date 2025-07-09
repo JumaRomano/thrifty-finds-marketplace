@@ -12,23 +12,9 @@ import { formatCurrency } from '@/utils/currency';
 import { Plus, Package, TrendingUp, Eye, Edit, Clock, Upload, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import ProductEditModal from './ProductEditModal';
+import { Tables } from '@/integrations/supabase/types';
 
-interface Product {
-  id: string;
-  title: string;
-  current_price: number;
-  starting_price: number;
-  condition: string;
-  is_auction: boolean;
-  status: string;
-  created_at: string;
-  auction_end_time?: string;
-  images?: string[];
-  description?: string;
-  brand?: string;
-  category_id?: string;
-  auction_duration_hours?: string;
-}
+type Product = Tables<'products'>;
 
 interface Bid {
   bid_id: string;
