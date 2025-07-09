@@ -10,6 +10,8 @@ import { Link } from 'react-router-dom';
 const Dashboard = () => {
   const { user, userRole, loading } = useAuth();
 
+  console.log('Dashboard - User:', user?.email, 'Role:', userRole, 'Loading:', loading);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -39,8 +41,14 @@ const Dashboard = () => {
 
   // Route to appropriate dashboard based on user role
   if (userRole === 'seller') {
+    console.log('Rendering Seller Dashboard');
     return <SellerDashboard />;
+  } else if (userRole === 'buyer') {
+    console.log('Rendering Buyer Dashboard');
+    return <BuyerDashboard />;
   } else {
+    // Default to buyer if role is not set or unknown
+    console.log('Defaulting to Buyer Dashboard, role:', userRole);
     return <BuyerDashboard />;
   }
 };

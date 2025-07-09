@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -38,13 +38,22 @@ interface Category {
 const Products = () => {
   const { toast } = useToast();
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchTerm, setSearchTerm] = useState(searchParams.get('search') || '');
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [selectedCondition, setSelectedCondition] = useState<string>('');
   const [sortBy, setSortBy] = useState<string>('newest');
+
+  useEffect(() => {
+    // Set search term from URL params on component mount
+    const searchFromUrl = searchParams.get('search');
+    if (searchFromUrl) {
+      setSearchTerm(searchFromUrl);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     fetchCategories();

@@ -23,6 +23,29 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
+  const fetchUserRole = async (userId: string) => {
+    try {
+      console.log('Fetching role for user:', userId);
+      const { data: profile, error } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .single();
+      
+      if (error) {
+        console.error('Error fetching user role:', error);
+        setUserRole('buyer'); // Default to buyer
+        return;
+      }
+      
+      console.log('Fetched user role:', profile?.role);
+      setUserRole(profile?.role || 'buyer');
+    } catch (error) {
+      console.error('Error fetching user role:', error);
+      setUserRole('buyer');
+    }
+  };
+
   useEffect(() => {
     // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -32,21 +55,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          // Fetch user profile to get role
-          setTimeout(async () => {
-            try {
-              const { data: profile } = await supabase
-                .from('profiles')
-                .select('role')
-                .eq('id', session.user.id)
-                .single();
-              
-              setUserRole(profile?.role || 'buyer');
-            } catch (error) {
-              console.error('Error fetching user role:', error);
-              setUserRole('buyer');
-            }
-          }, 0);
+          // Fetch user profile to get role with a small delay to ensure database is ready
+          setTimeout(() => {
+            fetchUserRole(session.user.id);
+          }, 100);
         } else {
           setUserRole(null);
         }
@@ -57,8 +69,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      console.log('Initial session:', session?.user?.email);
       setSession(session);
       setUser(session?.user ?? null);
+      
+      if (session?.user) {
+        fetchUserRole(session.user.id);
+      }
+      
       setLoading(false);
     });
 

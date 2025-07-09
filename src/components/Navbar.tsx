@@ -12,7 +12,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCart } from '@/contexts/CartContext';
-import { ShoppingCart, Heart, Search, User, LogOut, Store, Settings } from 'lucide-react';
+import { ShoppingCart, Heart, User, LogOut, Store, Settings } from 'lucide-react';
+import SearchBar from '@/components/SearchBar';
 
 const Navbar = () => {
   const { user, logout } = useAuth();
@@ -44,14 +45,7 @@ const Navbar = () => {
 
           {/* Search Bar */}
           <div className="hidden md:flex flex-1 max-w-md mx-8">
-            <div className="relative w-full">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-              <input
-                type="text"
-                placeholder="Search for vintage treasures..."
-                className="w-full pl-10 pr-4 py-2 border border-gray-200 rounded-full focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent bg-gray-50"
-              />
-            </div>
+            <SearchBar className="w-full" />
           </div>
 
           {/* Right Side */}
@@ -99,7 +93,7 @@ const Navbar = () => {
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => navigate('/dashboard')}>
                       <Store className="mr-2 h-4 w-4" />
-                      Seller Dashboard
+                      Dashboard
                     </DropdownMenuItem>
                     <DropdownMenuItem onClick={() => navigate('/admin')}>
                       <Settings className="mr-2 h-4 w-4" />
