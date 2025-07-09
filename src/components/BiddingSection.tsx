@@ -8,7 +8,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/utils/currency';
-import { Clock, Users, TrendingUp } from 'lucide-react';
+import { Clock, Users, TrendingUp, Trophy } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 interface Bid {
   id: string;
@@ -37,10 +38,13 @@ const BiddingSection = ({
 }: BiddingSectionProps) => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const navigate = useNavigate();
   const [bidAmount, setBidAmount] = useState('');
   const [bids, setBids] = useState<Bid[]>([]);
   const [timeLeft, setTimeLeft] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [auctionEnded, setAuctionEnded] = useState(false);
+  const [isWinner, setIsWinner] = useState(false);
 
   useEffect(() => {
     if (isAuction) {
@@ -57,18 +61,42 @@ const BiddingSection = ({
         const difference = endTime - now;
 
         if (difference > 0) {
-          const hours = Math.floor(difference / (1000 * 60 * 60));
+          const days = Math.floor(difference / (1000 * 60 * 60 * 24));
+          const hours = Math.floor((difference % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
           const minutes = Math.floor((difference % (1000 * 60 * 60)) / (1000 * 60));
           const seconds = Math.floor((difference % (1000 * 60)) / 1000);
-          setTimeLeft(`${hours}h ${minutes}m ${seconds}s`);
+          
+          if (days > 0) {
+            setTimeLeft(`${days}d ${hours}h ${minutes}m`);
+          } else {
+            setTimeLeft(`${hours}h ${minutes}m ${seconds}s`);
+          }
+          setAuctionEnded(false);
         } else {
           setTimeLeft('Auction ended');
+          setAuctionEnded(true);
+          checkIfWinner();
         }
       }, 1000);
 
       return () => clearInterval(timer);
     }
-  }, [auctionEndTime]);
+  }, [auctionEndTime, user, bids]);
+
+  const checkIfWinner = () => {
+    if (user && bids.length > 0) {
+      const highestBid = bids[0];
+      const userIsWinner = highestBid.bidder_id === user.id;
+      
+      if (userIsWinner && !isWinner) {
+        setIsWinner(true);
+        toast({
+          title: "🎉 Congratulations!",
+          description: `You won the auction with a bid of ${formatCurrency(highestBid.amount)}!`,
+        });
+      }
+    }
+  };
 
   const fetchBids = async () => {
     const { data, error } = await supabase
@@ -125,6 +153,15 @@ const BiddingSection = ({
       return;
     }
 
+    if (auctionEnded) {
+      toast({
+        title: "Auction ended",
+        description: "This auction has already ended.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     const amount = parseFloat(bidAmount);
     if (amount <= currentPrice) {
       toast({
@@ -151,7 +188,7 @@ const BiddingSection = ({
       setBidAmount('');
       toast({
         title: "Bid placed!",
-        description: `Your bid of ${formatCurrency(amount)} has been placed.`,
+        description: `Your bid of ${formatCurrency(amount)} has been placed successfully.`,
       });
     } catch (error: any) {
       console.error('Error placing bid:', error);
@@ -163,6 +200,10 @@ const BiddingSection = ({
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleProceedToCheckout = () => {
+    navigate(`/checkout/${productId}`);
   };
 
   if (!isAuction) {
@@ -192,7 +233,7 @@ const BiddingSection = ({
                 <Clock className="w-4 h-4" />
                 Time Left:
               </span>
-              <Badge variant={timeLeft === 'Auction ended' ? 'destructive' : 'default'}>
+              <Badge variant={auctionEnded ? 'destructive' : 'default'}>
                 {timeLeft}
               </Badge>
             </div>
@@ -206,7 +247,27 @@ const BiddingSection = ({
             <span className="font-semibold">{bids.length}</span>
           </div>
 
-          {user && timeLeft !== 'Auction ended' && (
+          {/* Winner notification */}
+          {auctionEnded && isWinner && (
+            <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-lg">
+              <div className="flex items-center gap-2 text-emerald-800 mb-2">
+                <Trophy className="w-5 h-5" />
+                <span className="font-bold">Congratulations! You won this auction!</span>
+              </div>
+              <p className="text-sm text-emerald-700 mb-3">
+                Your winning bid: {formatCurrency(bids[0]?.amount || currentPrice)}
+              </p>
+              <Button 
+                onClick={handleProceedToCheckout}
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                Proceed to Checkout
+              </Button>
+            </div>
+          )}
+
+          {/* Bidding form */}
+          {user && !auctionEnded && (
             <form onSubmit={handleBidSubmit} className="space-y-3">
               <div>
                 <label htmlFor="bidAmount" className="block text-sm font-medium mb-1">
@@ -232,6 +293,18 @@ const BiddingSection = ({
               </Button>
             </form>
           )}
+
+          {/* Auction ended message for non-winners */}
+          {auctionEnded && !isWinner && user && (
+            <div className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
+              <p className="text-gray-600">This auction has ended.</p>
+              {bids.length > 0 && (
+                <p className="text-sm text-gray-500">
+                  Winning bid: {formatCurrency(bids[0].amount)} by {bids[0].profiles.full_name}
+                </p>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -256,7 +329,7 @@ const BiddingSection = ({
                     </p>
                     {index === 0 && (
                       <Badge variant="default" className="text-xs">
-                        Highest Bid
+                        {auctionEnded ? 'Winner' : 'Highest Bid'}
                       </Badge>
                     )}
                   </div>

@@ -10,7 +10,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { formatCurrency } from '@/utils/currency';
-import { Plus, Package, TrendingUp, Eye, Edit } from 'lucide-react';
+import { Plus, Package, TrendingUp, Eye, Edit, Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 interface Product {
@@ -22,6 +22,7 @@ interface Product {
   is_auction: boolean;
   status: string;
   created_at: string;
+  auction_end_time?: string;
   images?: string[];
 }
 
@@ -44,6 +45,7 @@ const SellerDashboard = () => {
   const [categories, setCategories] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showListingForm, setShowListingForm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   // Form state
   const [formData, setFormData] = useState({
@@ -56,7 +58,7 @@ const SellerDashboard = () => {
     brand: '',
     category_id: '',
     is_auction: false,
-    auction_end_time: '',
+    auction_duration_hours: '24',
   });
 
   useEffect(() => {
@@ -67,30 +69,61 @@ const SellerDashboard = () => {
   }, [user]);
 
   const fetchCategories = async () => {
-    const { data } = await supabase.from('categories').select('*').order('name');
-    setCategories(data || []);
+    try {
+      const { data, error } = await supabase
+        .from('categories')
+        .select('*')
+        .order('name');
+      
+      if (error) throw error;
+      setCategories(data || []);
+    } catch (error) {
+      console.error('Error fetching categories:', error);
+    }
   };
 
   const fetchSellerData = async () => {
+    if (!user) return;
+
     try {
+      console.log('Fetching seller data for user:', user.id);
+      
       // Fetch seller's products
-      const { data: productsData } = await supabase
+      const { data: productsData, error: productsError } = await supabase
         .from('products')
         .select('*')
-        .eq('seller_id', user?.id)
+        .eq('seller_id', user.id)
         .order('created_at', { ascending: false });
 
+      if (productsError) {
+        console.error('Error fetching products:', productsError);
+        throw productsError;
+      }
+
+      console.log('Fetched products:', productsData);
+
       // Fetch bids on seller's products
-      const { data: bidsData } = await supabase
+      const { data: bidsData, error: bidsError } = await supabase
         .from('seller_bids')
         .select('*')
-        .eq('seller_id', user?.id)
+        .eq('seller_id', user.id)
         .order('bid_time', { ascending: false });
+
+      if (bidsError) {
+        console.error('Error fetching bids:', bidsError);
+      }
+
+      console.log('Fetched bids:', bidsData);
 
       setProducts(productsData || []);
       setBids(bidsData || []);
     } catch (error) {
       console.error('Error fetching seller data:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load seller data. Please try again.",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
@@ -99,29 +132,72 @@ const SellerDashboard = () => {
   const handleSubmitListing = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    if (!user) {
+      toast({
+        title: "Authentication Error",
+        description: "Please log in to create a listing",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formData.title.trim() || !formData.starting_price) {
+      toast({
+        title: "Validation Error",
+        description: "Please fill in all required fields",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSubmitting(true);
+
     try {
+      const startingPrice = parseFloat(formData.starting_price);
+      if (isNaN(startingPrice) || startingPrice <= 0) {
+        throw new Error('Starting price must be a valid positive number');
+      }
+
+      // Calculate auction end time if it's an auction
+      let auctionEndTime = null;
+      if (formData.is_auction && formData.auction_duration_hours) {
+        const hours = parseInt(formData.auction_duration_hours);
+        const endTime = new Date();
+        endTime.setHours(endTime.getHours() + hours);
+        auctionEndTime = endTime.toISOString();
+      }
+
       const productData = {
-        title: formData.title,
-        description: formData.description,
-        starting_price: parseFloat(formData.starting_price),
-        current_price: parseFloat(formData.starting_price),
+        title: formData.title.trim(),
+        description: formData.description.trim() || null,
+        starting_price: startingPrice,
+        current_price: startingPrice,
         buy_now_price: formData.buy_now_price ? parseFloat(formData.buy_now_price) : null,
         condition: formData.condition,
-        size: formData.size || null,
-        brand: formData.brand || null,
+        size: formData.size.trim() || null,
+        brand: formData.brand.trim() || null,
         category_id: formData.category_id || null,
         is_auction: formData.is_auction,
-        auction_end_time: formData.is_auction && formData.auction_end_time ? 
-          new Date(formData.auction_end_time).toISOString() : null,
-        seller_id: user?.id,
+        auction_end_time: auctionEndTime,
+        seller_id: user.id,
         images: ['/placeholder.svg'],
+        status: 'active'
       };
 
-      const { error } = await supabase
-        .from('products')
-        .insert(productData);
+      console.log('Submitting product data:', productData);
 
-      if (error) throw error;
+      const { data, error } = await supabase
+        .from('products')
+        .insert(productData)
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Supabase error:', error);
+        throw error;
+      }
+
+      console.log('Product created successfully:', data);
 
       toast({
         title: "Success!",
@@ -139,21 +215,31 @@ const SellerDashboard = () => {
         brand: '',
         category_id: '',
         is_auction: false,
-        auction_end_time: '',
+        auction_duration_hours: '24',
       });
       setShowListingForm(false);
       fetchSellerData();
     } catch (error: any) {
+      console.error('Error creating listing:', error);
       toast({
         title: "Error",
-        description: error.message || "Failed to list item.",
+        description: error.message || "Failed to create listing. Please try again.",
         variant: "destructive",
       });
+    } finally {
+      setSubmitting(false);
     }
   };
 
   if (loading) {
-    return <div className="flex justify-center items-center min-h-screen">Loading...</div>;
+    return (
+      <div className="flex justify-center items-center min-h-screen">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto mb-4"></div>
+          <p>Loading seller dashboard...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -206,7 +292,7 @@ const SellerDashboard = () => {
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm text-gray-600">Total Revenue</p>
+                  <p className="text-sm text-gray-600">Total Value</p>
                   <p className="text-2xl font-bold text-emerald-600">
                     {formatCurrency(products.reduce((sum, p) => sum + p.current_price, 0))}
                   </p>
@@ -232,6 +318,7 @@ const SellerDashboard = () => {
                       value={formData.title}
                       onChange={(e) => setFormData({...formData, title: e.target.value})}
                       required
+                      placeholder="Enter item title"
                     />
                   </div>
                   <div>
@@ -255,6 +342,7 @@ const SellerDashboard = () => {
                     value={formData.description}
                     onChange={(e) => setFormData({...formData, description: e.target.value})}
                     rows={3}
+                    placeholder="Describe your item..."
                   />
                 </div>
 
@@ -263,9 +351,12 @@ const SellerDashboard = () => {
                     <label className="block text-sm font-medium mb-1">Starting Price (KSh) *</label>
                     <Input
                       type="number"
+                      step="0.01"
+                      min="0"
                       value={formData.starting_price}
                       onChange={(e) => setFormData({...formData, starting_price: e.target.value})}
                       required
+                      placeholder="0.00"
                     />
                   </div>
                   <div>
@@ -288,6 +379,7 @@ const SellerDashboard = () => {
                     <Input
                       value={formData.brand}
                       onChange={(e) => setFormData({...formData, brand: e.target.value})}
+                      placeholder="Brand name"
                     />
                   </div>
                 </div>
@@ -298,26 +390,36 @@ const SellerDashboard = () => {
                       type="checkbox"
                       checked={formData.is_auction}
                       onChange={(e) => setFormData({...formData, is_auction: e.target.checked})}
+                      className="rounded"
                     />
                     <span className="text-sm font-medium">Enable Auction</span>
                   </label>
                   
                   {formData.is_auction && (
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Auction End Date</label>
-                      <Input
-                        type="datetime-local"
-                        value={formData.auction_end_time}
-                        onChange={(e) => setFormData({...formData, auction_end_time: e.target.value})}
-                        min={new Date().toISOString().slice(0, 16)}
-                      />
+                    <div className="flex items-center space-x-2">
+                      <Clock className="w-4 h-4 text-gray-500" />
+                      <label className="block text-sm font-medium">Duration (hours):</label>
+                      <Select value={formData.auction_duration_hours} onValueChange={(value) => setFormData({...formData, auction_duration_hours: value})}>
+                        <SelectTrigger className="w-32">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1">1 hour</SelectItem>
+                          <SelectItem value="6">6 hours</SelectItem>
+                          <SelectItem value="12">12 hours</SelectItem>
+                          <SelectItem value="24">24 hours</SelectItem>
+                          <SelectItem value="48">48 hours</SelectItem>
+                          <SelectItem value="72">72 hours</SelectItem>
+                          <SelectItem value="168">7 days</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
                   )}
                 </div>
 
                 <div className="flex gap-4">
-                  <Button type="submit" className="bg-gradient-to-r from-emerald-500 to-teal-600">
-                    List Item
+                  <Button type="submit" disabled={submitting} className="bg-gradient-to-r from-emerald-500 to-teal-600">
+                    {submitting ? 'Creating Listing...' : 'List Item'}
                   </Button>
                   <Button type="button" variant="outline" onClick={() => setShowListingForm(false)}>
                     Cancel
@@ -365,6 +467,13 @@ const SellerDashboard = () => {
               <div className="text-center py-8">
                 <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-600">No listings yet. Create your first listing!</p>
+                <Button 
+                  onClick={() => setShowListingForm(true)}
+                  className="mt-4 bg-gradient-to-r from-emerald-500 to-teal-600"
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Create Listing
+                </Button>
               </div>
             ) : (
               <div className="space-y-4">
@@ -386,6 +495,11 @@ const SellerDashboard = () => {
                             {product.status}
                           </Badge>
                           {product.is_auction && <Badge className="bg-emerald-500">Auction</Badge>}
+                          {product.auction_end_time && new Date(product.auction_end_time) > new Date() && (
+                            <Badge variant="outline">
+                              Ends {new Date(product.auction_end_time).toLocaleDateString()}
+                            </Badge>
+                          )}
                         </div>
                       </div>
                     </div>
