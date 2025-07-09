@@ -7,8 +7,9 @@ import { useToast } from '@/hooks/use-toast';
 interface AuthContextType {
   user: User | null;
   session: Session | null;
+  userRole: string | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string) => Promise<void>;
+  register: (email: string, password: string, name: string, role: string) => Promise<void>;
   logout: () => Promise<void>;
   loading: boolean;
 }
@@ -18,6 +19,7 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
+  const [userRole, setUserRole] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
 
@@ -28,6 +30,27 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         console.log('Auth state changed:', event, session?.user?.email);
         setSession(session);
         setUser(session?.user ?? null);
+        
+        if (session?.user) {
+          // Fetch user profile to get role
+          setTimeout(async () => {
+            try {
+              const { data: profile } = await supabase
+                .from('profiles')
+                .select('role')
+                .eq('id', session.user.id)
+                .single();
+              
+              setUserRole(profile?.role || 'buyer');
+            } catch (error) {
+              console.error('Error fetching user role:', error);
+              setUserRole('buyer');
+            }
+          }, 0);
+        } else {
+          setUserRole(null);
+        }
+        
         setLoading(false);
       }
     );
@@ -66,7 +89,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
-  const register = async (email: string, password: string, name: string) => {
+  const register = async (email: string, password: string, name: string, role: string) => {
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
@@ -74,12 +97,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         options: {
           data: {
             full_name: name,
+            role: role,
           },
           emailRedirectTo: `${window.location.origin}/`,
         },
       });
 
       if (error) throw error;
+
+      // Update profile with role after signup
+      if (data.user) {
+        await supabase
+          .from('profiles')
+          .update({ role: role })
+          .eq('id', data.user.id);
+      }
 
       toast({
         title: "Account created!",
@@ -116,7 +148,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, login, register, logout, loading }}>
+    <AuthContext.Provider value={{ user, session, userRole, login, register, logout, loading }}>
       {children}
     </AuthContext.Provider>
   );

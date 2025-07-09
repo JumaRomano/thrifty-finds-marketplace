@@ -284,7 +284,35 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      seller_bids: {
+        Row: {
+          amount: number | null
+          bid_id: string | null
+          bid_time: string | null
+          bidder_email: string | null
+          bidder_name: string | null
+          current_price: number | null
+          product_id: string | null
+          product_title: string | null
+          seller_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bids_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "products_seller_id_fkey"
+            columns: ["seller_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       [_ in never]: never
