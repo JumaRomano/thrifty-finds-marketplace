@@ -66,12 +66,22 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
 
     try {
       for (const file of Array.from(files)) {
-        // For demo purposes, we'll use placeholder URLs
-        // In production, you'd upload to storage
-        const imageUrl = URL.createObjectURL(file);
-        newImages.push(imageUrl);
+        // Upload to Supabase Storage
+        const filePath = `public/${Date.now()}-${file.name}`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('product-images')
+          .upload(filePath, file);
+        if (uploadError) throw uploadError;
+
+        // Get the public URL
+        const { data: urlData } = supabase.storage
+          .from('product-images')
+          .getPublicUrl(filePath);
+        if (urlData?.publicUrl) {
+          newImages.push(urlData.publicUrl);
+        }
       }
-      
+
       setImages(prev => [...prev, ...newImages]);
       toast({
         title: "Images uploaded",
@@ -109,8 +119,8 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
           category_id: formData.category_id || null,
           images: images,
           is_auction: formData.is_auction,
-          auction_end_time: formData.is_auction ? 
-            new Date(Date.now() + parseInt(formData.auction_duration_hours) * 60 * 60 * 1000).toISOString() : 
+          auction_end_time: formData.is_auction ?
+            new Date(Date.now() + parseInt(formData.auction_duration_hours) * 60 * 60 * 1000).toISOString() :
             null,
           updated_at: new Date().toISOString()
         })
@@ -144,7 +154,7 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
       <Card className="w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>Edit Product</CardTitle>
-          <Button variant="ghost" size="sm" onClick={onClose}>
+          <Button variant="ghost" size="sm" onClick={onClose} title="Close">
             <X className="w-4 h-4" />
           </Button>
         </CardHeader>
@@ -153,7 +163,7 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
             <label className="block text-sm font-medium mb-1">Title *</label>
             <Input
               value={formData.title}
-              onChange={(e) => setFormData({...formData, title: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, title: e.target.value })}
               required
             />
           </div>
@@ -162,7 +172,7 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
             <label className="block text-sm font-medium mb-1">Description</label>
             <Textarea
               value={formData.description}
-              onChange={(e) => setFormData({...formData, description: e.target.value})}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
               rows={3}
             />
           </div>
@@ -174,13 +184,13 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
                 type="number"
                 step="0.01"
                 value={formData.starting_price}
-                onChange={(e) => setFormData({...formData, starting_price: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, starting_price: e.target.value })}
                 required
               />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Condition</label>
-              <Select value={formData.condition} onValueChange={(value) => setFormData({...formData, condition: value})}>
+              <Select value={formData.condition} onValueChange={(value) => setFormData({ ...formData, condition: value })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -200,12 +210,12 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
               <label className="block text-sm font-medium mb-1">Brand</label>
               <Input
                 value={formData.brand}
-                onChange={(e) => setFormData({...formData, brand: e.target.value})}
+                onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
               />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Category</label>
-              <Select value={formData.category_id} onValueChange={(value) => setFormData({...formData, category_id: value})}>
+              <Select value={formData.category_id} onValueChange={(value) => setFormData({ ...formData, category_id: value })}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -262,15 +272,15 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
               <input
                 type="checkbox"
                 checked={formData.is_auction}
-                onChange={(e) => setFormData({...formData, is_auction: e.target.checked})}
+                onChange={(e) => setFormData({ ...formData, is_auction: e.target.checked })}
               />
               <span className="text-sm font-medium">Enable Auction</span>
             </label>
-            
+
             {formData.is_auction && (
               <div className="flex items-center space-x-2">
                 <label className="text-sm font-medium">Duration (hours):</label>
-                <Select value={formData.auction_duration_hours} onValueChange={(value) => setFormData({...formData, auction_duration_hours: value})}>
+                <Select value={formData.auction_duration_hours} onValueChange={(value) => setFormData({ ...formData, auction_duration_hours: value })}>
                   <SelectTrigger className="w-32">
                     <SelectValue />
                   </SelectTrigger>

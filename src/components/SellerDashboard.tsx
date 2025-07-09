@@ -66,7 +66,7 @@ const SellerDashboard = () => {
         .from('categories')
         .select('*')
         .order('name');
-      
+
       if (error) throw error;
       setCategories(data || []);
     } catch (error) {
@@ -79,7 +79,7 @@ const SellerDashboard = () => {
 
     try {
       console.log('Fetching seller data for user:', user.id);
-      
+
       const { data: productsData, error: productsError } = await supabase
         .from('products')
         .select('*')
@@ -128,12 +128,22 @@ const SellerDashboard = () => {
 
     try {
       for (const file of Array.from(files)) {
-        // For demo purposes, we'll use placeholder URLs
-        // In production, you'd upload to Supabase storage
-        const imageUrl = URL.createObjectURL(file);
-        newImages.push(imageUrl);
+        // Upload to Supabase Storage
+        const filePath = `public/${Date.now()}-${file.name}`;
+        const { data: uploadData, error: uploadError } = await supabase.storage
+          .from('product-images')
+          .upload(filePath, file);
+        if (uploadError) throw uploadError;
+
+        // Get the public URL
+        const { data: urlData } = supabase.storage
+          .from('product-images')
+          .getPublicUrl(filePath);
+        if (urlData?.publicUrl) {
+          newImages.push(urlData.publicUrl);
+        }
       }
-      
+
       setFormImages(prev => [...prev, ...newImages]);
       toast({
         title: "Images uploaded",
@@ -157,7 +167,7 @@ const SellerDashboard = () => {
 
   const handleSubmitListing = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!user) {
       toast({
         title: "Authentication Error",
@@ -342,14 +352,14 @@ const SellerDashboard = () => {
                     <label className="block text-sm font-medium mb-1">Title *</label>
                     <Input
                       value={formData.title}
-                      onChange={(e) => setFormData({...formData, title: e.target.value})}
+                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                       required
                       placeholder="Enter item title"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium mb-1">Category</label>
-                    <Select value={formData.category_id} onValueChange={(value) => setFormData({...formData, category_id: value})}>
+                    <Select value={formData.category_id} onValueChange={(value) => setFormData({ ...formData, category_id: value })}>
                       <SelectTrigger>
                         <SelectValue placeholder="Select category" />
                       </SelectTrigger>
@@ -366,7 +376,7 @@ const SellerDashboard = () => {
                   <label className="block text-sm font-medium mb-1">Description</label>
                   <Textarea
                     value={formData.description}
-                    onChange={(e) => setFormData({...formData, description: e.target.value})}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
                     rows={3}
                     placeholder="Describe your item..."
                   />
@@ -420,14 +430,14 @@ const SellerDashboard = () => {
                       step="0.01"
                       min="0"
                       value={formData.starting_price}
-                      onChange={(e) => setFormData({...formData, starting_price: e.target.value})}
+                      onChange={(e) => setFormData({ ...formData, starting_price: e.target.value })}
                       required
                       placeholder="0.00"
                     />
                   </div>
                   <div>
                     <label className="block text-sm font-medium mb-1">Condition *</label>
-                    <Select value={formData.condition} onValueChange={(value) => setFormData({...formData, condition: value})} required>
+                    <Select value={formData.condition} onValueChange={(value) => setFormData({ ...formData, condition: value })} required>
                       <SelectTrigger>
                         <SelectValue placeholder="Select condition" />
                       </SelectTrigger>
@@ -444,7 +454,7 @@ const SellerDashboard = () => {
                     <label className="block text-sm font-medium mb-1">Brand</label>
                     <Input
                       value={formData.brand}
-                      onChange={(e) => setFormData({...formData, brand: e.target.value})}
+                      onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
                       placeholder="Brand name"
                     />
                   </div>
@@ -455,17 +465,17 @@ const SellerDashboard = () => {
                     <input
                       type="checkbox"
                       checked={formData.is_auction}
-                      onChange={(e) => setFormData({...formData, is_auction: e.target.checked})}
+                      onChange={(e) => setFormData({ ...formData, is_auction: e.target.checked })}
                       className="rounded"
                     />
                     <span className="text-sm font-medium">Enable Auction</span>
                   </label>
-                  
+
                   {formData.is_auction && (
                     <div className="flex items-center space-x-2">
                       <Clock className="w-4 h-4 text-gray-500" />
                       <label className="block text-sm font-medium">Duration (hours):</label>
-                      <Select value={formData.auction_duration_hours} onValueChange={(value) => setFormData({...formData, auction_duration_hours: value})}>
+                      <Select value={formData.auction_duration_hours} onValueChange={(value) => setFormData({ ...formData, auction_duration_hours: value })}>
                         <SelectTrigger className="w-32">
                           <SelectValue />
                         </SelectTrigger>
@@ -533,7 +543,7 @@ const SellerDashboard = () => {
               <div className="text-center py-8">
                 <Package className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-600">No listings yet. Create your first listing!</p>
-                <Button 
+                <Button
                   onClick={() => setShowListingForm(true)}
                   className="mt-4 bg-gradient-to-r from-emerald-500 to-teal-600"
                 >

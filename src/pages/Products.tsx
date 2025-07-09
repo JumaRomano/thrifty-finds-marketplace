@@ -262,7 +262,7 @@ const Products = () => {
             {products.map((product) => (
               <Link key={product.id} to={`/product/${product.id}`}>
                 <Card className="group hover:shadow-lg transition-shadow duration-300 overflow-hidden">
-                  <div className="aspect-square bg-gray-100 overflow-hidden relative">
+                  <div className="aspect-square bg-gray-100 overflow-hidden relative min-h-[200px]">
                     <img
                       src={product.images?.[0] || '/placeholder.svg'}
                       alt={product.title}

@@ -6,13 +6,14 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/contexts/AuthContext';
 import { Recycle, Heart, Shield, Truck } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 const mockProducts = [
   {
     id: '1',
     title: 'Vintage Levi\'s Denim Jacket',
     price: 45,
-    image: 'https://images.unsplash.com/photo-1551542049-8b7e5d4f6cdf?w=400&h=400&fit=crop',
+    image: 'https://www.pinterest.com/pin/624241198754468106/',
     condition: 'Like New',
     category: 'Outerwear'
   },
@@ -67,6 +68,19 @@ const features = [
 
 const Index = () => {
   const { user } = useAuth();
+  const [featuredProducts, setFeaturedProducts] = React.useState<any[]>([]);
+  React.useEffect(() => {
+    const fetchFeatured = async () => {
+      const { data, error } = await supabase
+        .from('products')
+        .select('*')
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(4);
+      if (!error) setFeaturedProducts(data || []);
+    };
+    fetchFeatured();
+  }, []);
 
   return (
     <div className="min-h-screen">
@@ -132,11 +146,11 @@ const Index = () => {
             </Link>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {mockProducts.map((product) => (
+            {featuredProducts.map((product) => (
               <Card key={product.id} className="overflow-hidden hover:shadow-lg transition-shadow group">
                 <div className="relative overflow-hidden">
                   <img
-                    src={product.image}
+                    src={product.images && product.images.length > 0 ? product.images[0] : '/placeholder.svg'}
                     alt={product.title}
                     className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
                   />
@@ -146,9 +160,9 @@ const Index = () => {
                 </div>
                 <CardContent className="p-4">
                   <h3 className="font-semibold text-gray-800 mb-1">{product.title}</h3>
-                  <p className="text-sm text-gray-500 mb-2">{product.category}</p>
+                  <p className="text-sm text-gray-500 mb-2">{product.category_id}</p>
                   <div className="flex justify-between items-center">
-                    <span className="text-xl font-bold text-emerald-600">${product.price}</span>
+                    <span className="text-xl font-bold text-emerald-600">${product.current_price}</span>
                     <Link to={`/product/${product.id}`}>
                       <Button size="sm" className="bg-gradient-to-r from-emerald-500 to-teal-600">
                         View
