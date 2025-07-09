@@ -18,11 +18,13 @@ const Cart = () => {
       navigate('/login');
       return;
     }
-    // Mock checkout process
-    clearCart();
-    navigate('/', { 
-      state: { message: 'Order placed successfully! (Demo mode)' }
-    });
+    
+    // For now, we'll handle the first item in cart as a single product checkout
+    // In a real app, you'd need to handle multiple items differently
+    if (cart.length > 0) {
+      const firstItem = cart[0];
+      navigate(`/checkout/${firstItem.id}`);
+    }
   };
 
   if (cart.length === 0) {
@@ -152,14 +154,10 @@ const Cart = () => {
                     <span>Shipping</span>
                     <span className="text-emerald-600">Free</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span>Tax</span>
-                    <span>${(getTotalPrice() * 0.08).toFixed(2)}</span>
-                  </div>
                   <hr />
                   <div className="flex justify-between text-lg font-bold">
                     <span>Total</span>
-                    <span>${(getTotalPrice() * 1.08).toFixed(2)}</span>
+                    <span>${getTotalPrice().toFixed(2)}</span>
                   </div>
                 </div>
 

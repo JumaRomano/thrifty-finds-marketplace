@@ -23,6 +23,7 @@ interface CartContextType {
   removeFromWishlist: (productId: string) => void;
   isInWishlist: (productId: string) => boolean;
   clearCart: () => void;
+  clearCartAfterCheckout: () => void;
   getTotalPrice: () => number;
   getTotalItems: () => number;
 }
@@ -124,6 +125,11 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
     });
   };
 
+  const clearCartAfterCheckout = () => {
+    setCart([]);
+    // No toast for this one as it's called after successful checkout
+  };
+
   const getTotalPrice = () => {
     return cart.reduce((total, item) => total + (item.price * item.quantity), 0);
   };
@@ -143,6 +149,7 @@ export const CartProvider = ({ children }: { children: React.ReactNode }) => {
       removeFromWishlist,
       isInWishlist,
       clearCart,
+      clearCartAfterCheckout,
       getTotalPrice,
       getTotalItems,
     }}>
