@@ -67,17 +67,16 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
 
     try {
       for (const file of Array.from(files)) {
-        // Create a unique file name
+        // Create a unique file name without the public/ prefix
         const fileExt = file.name.split('.').pop();
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-        const filePath = `public/${fileName}`;
 
         console.log('Uploading file:', fileName);
 
         // Upload to Supabase Storage
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('product-images')
-          .upload(filePath, file, {
+          .upload(fileName, file, {
             cacheControl: '3600',
             upsert: false
           });
@@ -92,7 +91,7 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
         // Get the public URL
         const { data: urlData } = supabase.storage
           .from('product-images')
-          .getPublicUrl(filePath);
+          .getPublicUrl(fileName);
 
         if (urlData?.publicUrl) {
           newImages.push(urlData.publicUrl);
@@ -114,6 +113,8 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
       });
     } finally {
       setUploadingImages(false);
+      // Reset the input value so the same file can be uploaded again if needed
+      event.target.value = '';
     }
   };
 
