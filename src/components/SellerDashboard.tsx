@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -156,12 +155,18 @@ const SellerDashboard = () => {
           .getPublicUrl(fileName);
 
         if (urlData?.publicUrl) {
+          console.log('Generated public URL:', urlData.publicUrl);
           newImages.push(urlData.publicUrl);
-          console.log('Public URL:', urlData.publicUrl);
         }
       }
 
-      setFormImages(prev => [...prev, ...newImages]);
+      console.log('New images to add:', newImages);
+      setFormImages(prev => {
+        const updated = [...prev, ...newImages];
+        console.log('Updated form images array:', updated);
+        return updated;
+      });
+      
       toast({
         title: "Images uploaded",
         description: `${newImages.length} image(s) uploaded successfully.`,
@@ -410,9 +415,30 @@ const SellerDashboard = () => {
                           src={image}
                           alt={`Product ${index + 1}`}
                           className="w-full h-20 object-cover rounded border"
+                          onLoad={() => console.log('Form image loaded successfully:', image)}
                           onError={(e) => {
-                            console.error('Image load error:', image);
+                            console.error('Form image load error for URL:', image);
+                            console.error('Error event:', e);
+                            // Check if this is a Supabase URL and try to refresh it
+                            if (image.includes('supabase')) {
+                              console.log('Attempting to refresh Supabase form image URL...');
+                              // Try to get a fresh URL
+                              const fileName = image.split('/').pop();
+                              if (fileName) {
+                                const { data } = supabase.storage
+                                  .from('product-images')
+                                  .getPublicUrl(fileName);
+                                console.log('Fresh form URL:', data?.publicUrl);
+                              }
+                            }
                             e.currentTarget.src = '/placeholder.svg';
+                          }}
+                          style={{ 
+                            border: '1px dashed #ccc',
+                            minHeight: '80px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center'
                           }}
                         />
                         <button
@@ -448,6 +474,16 @@ const SellerDashboard = () => {
                       <span className="text-sm text-gray-500">Please wait...</span>
                     )}
                   </div>
+                  {formImages.length > 0 && (
+                    <div className="mt-2 text-sm text-gray-600">
+                      Form images: {formImages.length}
+                      {formImages.map((img, idx) => (
+                        <div key={idx} className="text-xs text-gray-400 truncate">
+                          {idx + 1}: {img}
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

@@ -55,6 +55,7 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
         auction_duration_hours: '24',
       });
       setImages(product.images || []);
+      console.log('Product images loaded:', product.images);
     }
   }, [product]);
 
@@ -94,12 +95,18 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
           .getPublicUrl(fileName);
 
         if (urlData?.publicUrl) {
+          console.log('Generated public URL:', urlData.publicUrl);
           newImages.push(urlData.publicUrl);
-          console.log('Public URL:', urlData.publicUrl);
         }
       }
 
-      setImages(prev => [...prev, ...newImages]);
+      console.log('New images to add:', newImages);
+      setImages(prev => {
+        const updated = [...prev, ...newImages];
+        console.log('Updated images array:', updated);
+        return updated;
+      });
+      
       toast({
         title: "Images uploaded",
         description: `${newImages.length} image(s) uploaded successfully.`,
@@ -281,9 +288,30 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
                     src={image}
                     alt={`Product ${index + 1}`}
                     className="w-full h-20 object-cover rounded border"
+                    onLoad={() => console.log('Image loaded successfully:', image)}
                     onError={(e) => {
-                      console.error('Image load error:', image);
+                      console.error('Image load error for URL:', image);
+                      console.error('Error event:', e);
+                      // Check if this is a Supabase URL and try to refresh it
+                      if (image.includes('supabase')) {
+                        console.log('Attempting to refresh Supabase image URL...');
+                        // Try to get a fresh URL
+                        const fileName = image.split('/').pop();
+                        if (fileName) {
+                          const { data } = supabase.storage
+                            .from('product-images')
+                            .getPublicUrl(fileName);
+                          console.log('Fresh URL:', data?.publicUrl);
+                        }
+                      }
                       e.currentTarget.src = '/placeholder.svg';
+                    }}
+                    style={{ 
+                      border: '1px dashed #ccc',
+                      minHeight: '80px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
                     }}
                   />
                   <button
@@ -316,6 +344,16 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
                 <span className="text-sm text-gray-500">Please wait...</span>
               )}
             </div>
+            {images.length > 0 && (
+              <div className="mt-2 text-sm text-gray-600">
+                Current images: {images.length}
+                {images.map((img, idx) => (
+                  <div key={idx} className="text-xs text-gray-400 truncate">
+                    {idx + 1}: {img}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className="flex items-center space-x-4">
