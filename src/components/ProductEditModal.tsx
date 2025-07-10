@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -51,7 +52,7 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
         brand: product.brand || '',
         category_id: product.category_id || '',
         is_auction: product.is_auction || false,
-        auction_duration_hours: '24', // Default since this field doesn't exist in the DB
+        auction_duration_hours: '24',
       });
       setImages(product.images || []);
     }
@@ -66,32 +67,49 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
 
     try {
       for (const file of Array.from(files)) {
+        // Create a unique file name
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const filePath = `public/${fileName}`;
+
+        console.log('Uploading file:', fileName);
+
         // Upload to Supabase Storage
-        const filePath = `public/${Date.now()}-${file.name}`;
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('product-images')
-          .upload(filePath, file);
-        if (uploadError) throw uploadError;
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+          });
+
+        if (uploadError) {
+          console.error('Upload error:', uploadError);
+          throw uploadError;
+        }
+
+        console.log('Upload successful:', uploadData);
 
         // Get the public URL
         const { data: urlData } = supabase.storage
           .from('product-images')
           .getPublicUrl(filePath);
+
         if (urlData?.publicUrl) {
           newImages.push(urlData.publicUrl);
+          console.log('Public URL:', urlData.publicUrl);
         }
       }
 
       setImages(prev => [...prev, ...newImages]);
       toast({
         title: "Images uploaded",
-        description: "Product images have been added successfully.",
+        description: `${newImages.length} image(s) uploaded successfully.`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading images:', error);
       toast({
         title: "Upload failed",
-        description: "Failed to upload images. Please try again.",
+        description: error.message || "Failed to upload images. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -106,27 +124,52 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
   const handleSave = async () => {
     if (!product) return;
 
+    if (!formData.title.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Product title is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!formData.starting_price || parseFloat(formData.starting_price) <= 0) {
+      toast({
+        title: "Validation Error",
+        description: "Please enter a valid starting price.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
     try {
+      const updateData = {
+        title: formData.title.trim(),
+        description: formData.description.trim() || null,
+        starting_price: parseFloat(formData.starting_price),
+        condition: formData.condition || null,
+        brand: formData.brand.trim() || null,
+        category_id: formData.category_id || null,
+        images: images.length > 0 ? images : ['/placeholder.svg'],
+        is_auction: formData.is_auction,
+        auction_end_time: formData.is_auction ?
+          new Date(Date.now() + parseInt(formData.auction_duration_hours) * 60 * 60 * 1000).toISOString() :
+          null,
+        updated_at: new Date().toISOString()
+      };
+
+      console.log('Updating product with data:', updateData);
+
       const { error } = await supabase
         .from('products')
-        .update({
-          title: formData.title,
-          description: formData.description,
-          starting_price: parseFloat(formData.starting_price),
-          condition: formData.condition,
-          brand: formData.brand,
-          category_id: formData.category_id || null,
-          images: images,
-          is_auction: formData.is_auction,
-          auction_end_time: formData.is_auction ?
-            new Date(Date.now() + parseInt(formData.auction_duration_hours) * 60 * 60 * 1000).toISOString() :
-            null,
-          updated_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('id', product.id);
 
-      if (error) throw error;
+      if (error) {
+        console.error('Update error:', error);
+        throw error;
+      }
 
       toast({
         title: "Product updated",
@@ -192,7 +235,7 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
               <label className="block text-sm font-medium mb-1">Condition</label>
               <Select value={formData.condition} onValueChange={(value) => setFormData({ ...formData, condition: value })}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Select condition" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="like_new">Like New</SelectItem>
@@ -217,7 +260,7 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
               <label className="block text-sm font-medium mb-1">Category</label>
               <Select value={formData.category_id} onValueChange={(value) => setFormData({ ...formData, category_id: value })}>
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Select category" />
                 </SelectTrigger>
                 <SelectContent>
                   {categories.map((cat) => (
@@ -237,8 +280,13 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
                     src={image}
                     alt={`Product ${index + 1}`}
                     className="w-full h-20 object-cover rounded border"
+                    onError={(e) => {
+                      console.error('Image load error:', image);
+                      e.currentTarget.src = '/placeholder.svg';
+                    }}
                   />
                   <button
+                    type="button"
                     onClick={() => removeImage(index)}
                     className="absolute top-1 right-1 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity"
                   >
@@ -254,16 +302,18 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
                 accept="image/*"
                 onChange={handleImageUpload}
                 className="hidden"
-                id="image-upload"
+                id="image-upload-edit"
               />
               <label
-                htmlFor="image-upload"
-                className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded cursor-pointer hover:bg-gray-50"
+                htmlFor="image-upload-edit"
+                className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded cursor-pointer hover:bg-gray-50 disabled:opacity-50"
               >
                 <Upload className="w-4 h-4" />
-                <span>Upload Images</span>
+                <span>{uploadingImages ? 'Uploading...' : 'Upload Images'}</span>
               </label>
-              {uploadingImages && <span className="text-sm text-gray-500">Uploading...</span>}
+              {uploadingImages && (
+                <span className="text-sm text-gray-500">Please wait...</span>
+              )}
             </div>
           </div>
 
@@ -299,10 +349,16 @@ const ProductEditModal: React.FC<ProductEditModalProps> = ({
           </div>
 
           <div className="flex gap-2 pt-4">
-            <Button onClick={handleSave} disabled={loading} className="flex-1">
+            <Button 
+              onClick={handleSave} 
+              disabled={loading || uploadingImages} 
+              className="flex-1"
+            >
               {loading ? 'Saving...' : 'Save Changes'}
             </Button>
-            <Button variant="outline" onClick={onClose}>Cancel</Button>
+            <Button variant="outline" onClick={onClose} disabled={loading}>
+              Cancel
+            </Button>
           </div>
         </CardContent>
       </Card>

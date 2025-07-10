@@ -128,32 +128,49 @@ const SellerDashboard = () => {
 
     try {
       for (const file of Array.from(files)) {
+        // Create a unique file name
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const filePath = `public/${fileName}`;
+
+        console.log('Uploading file:', fileName);
+
         // Upload to Supabase Storage
-        const filePath = `public/${Date.now()}-${file.name}`;
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from('product-images')
-          .upload(filePath, file);
-        if (uploadError) throw uploadError;
+          .upload(filePath, file, {
+            cacheControl: '3600',
+            upsert: false
+          });
+
+        if (uploadError) {
+          console.error('Upload error:', uploadError);
+          throw uploadError;
+        }
+
+        console.log('Upload successful:', uploadData);
 
         // Get the public URL
         const { data: urlData } = supabase.storage
           .from('product-images')
           .getPublicUrl(filePath);
+
         if (urlData?.publicUrl) {
           newImages.push(urlData.publicUrl);
+          console.log('Public URL:', urlData.publicUrl);
         }
       }
 
       setFormImages(prev => [...prev, ...newImages]);
       toast({
         title: "Images uploaded",
-        description: "Product images have been added successfully.",
+        description: `${newImages.length} image(s) uploaded successfully.`,
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading images:', error);
       toast({
         title: "Upload failed",
-        description: "Failed to upload images. Please try again.",
+        description: error.message || "Failed to upload images. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -391,6 +408,10 @@ const SellerDashboard = () => {
                           src={image}
                           alt={`Product ${index + 1}`}
                           className="w-full h-20 object-cover rounded border"
+                          onError={(e) => {
+                            console.error('Image load error:', image);
+                            e.currentTarget.src = '/placeholder.svg';
+                          }}
                         />
                         <button
                           type="button"
@@ -409,16 +430,21 @@ const SellerDashboard = () => {
                       accept="image/*"
                       onChange={handleImageUpload}
                       className="hidden"
-                      id="image-upload"
+                      id="image-upload-new"
+                      disabled={uploadingImages}
                     />
                     <label
-                      htmlFor="image-upload"
-                      className="flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded cursor-pointer hover:bg-gray-50"
+                      htmlFor="image-upload-new"
+                      className={`flex items-center space-x-2 px-3 py-2 border border-gray-300 rounded cursor-pointer hover:bg-gray-50 transition-colors ${
+                        uploadingImages ? 'opacity-50 cursor-not-allowed' : ''
+                      }`}
                     >
                       <Upload className="w-4 h-4" />
-                      <span>Upload Images</span>
+                      <span>{uploadingImages ? 'Uploading...' : 'Upload Images'}</span>
                     </label>
-                    {uploadingImages && <span className="text-sm text-gray-500">Uploading...</span>}
+                    {uploadingImages && (
+                      <span className="text-sm text-gray-500">Please wait...</span>
+                    )}
                   </div>
                 </div>
 
